@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+.claude/
+# runtime auth/state lives in ~/.upwork-cli — never commit it
+tokens.json
+client.json
+verifier.json
+config.json
+tools.json
+.env
+*.log
