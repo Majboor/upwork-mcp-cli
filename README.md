@@ -164,3 +164,9 @@ actions:[{ name, description, params:[{ name, type, required, nested, enum, desc
 
 Every write action still follows the Upwork MCP draft→confirm model, and binding
 financial actions (offers, milestone funding) complete on upwork.com.
+
+## Examples
+
+- **[n8n automation](examples/n8n/)** — import-ready n8n workflows that search Upwork
+  on a schedule, enrich each job with competitor bid ranges + client spend history,
+  score them (HOT/WATCH/SKIP), and draft AI proposals — via a tiny bridge over this CLI.

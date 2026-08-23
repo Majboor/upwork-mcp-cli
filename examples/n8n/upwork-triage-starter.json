@@ -1,0 +1,92 @@
+{
+  "name": "Upwork Pre-Bid Triage",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "b1a1e1a1-0001-4001-8001-000000000001",
+      "name": "Run triage",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-120, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:4178/api/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "q", "value": "AI automation" },
+            { "name": "limit", "value": "8" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1a1e1a1-0002-4001-8001-000000000002",
+      "name": "Search Upwork (MCP bridge)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// one item per job, carrying the search fields forward\nreturn ($input.first().json.jobs || []).map(j => ({ json: j }));"
+      },
+      "id": "b1a1e1a1-0003-4001-8001-000000000003",
+      "name": "Split jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [360, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:4178/api/job",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [ { "name": "id", "value": "={{ $json.id }}" } ]
+        },
+        "options": {}
+      },
+      "id": "b1a1e1a1-0004-4001-8001-000000000004",
+      "name": "Enrich (deep intel)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// zip the search items with their enriched deep-intel (1:1 by order), score,\n// tag HOT/WATCH/SKIP, keep the ones worth opening, sorted best-first.\nconst search = $('Split jobs').all();\nconst deep = $input.all();\nconst num = v => (v==null||v===''||isNaN(+v)) ? null : +v;\nconst out = [];\nfor (let i=0;i<deep.length;i++){\n  const s = (search[i]||{}).json || {};\n  const j = (deep[i].json.job) || {};\n  const bid = j.bid_stats || {};\n  const cr = j.client_record || {};\n  const spend = num(cr.spend_total);\n  const prop = num(s.proposal_count) || 0;\n  const hired = (j.job_activity && j.job_activity.totalHired) || 0;\n  const spendScore = spend!=null ? Math.min(1, Math.log10(spend+1)/6) : 0.2;\n  const compScore = 1 - Math.min(1, prop/50);\n  const openScore = hired>0 ? 0.2 : 1;\n  const payScore = bid.avg!=null ? Math.min(1, bid.avg/120) : 0.4;\n  const score = Math.round(100*(0.34*spendScore+0.28*compScore+0.20*openScore+0.18*payScore));\n  const tag = score>=72 ? 'HOT' : score>=55 ? 'WATCH' : 'SKIP';\n  out.push({ json: {\n    score, tag,\n    title: s.title || j.title,\n    type: s.job_type,\n    proposals: prop,\n    bid_avg: bid.avg, bid_min: bid.min, bid_max: bid.max,\n    client_spend: spend,\n    client_country: (s.client||{}).country,\n    verified: (s.client||{}).verification_status === 'VERIFIED',\n    connects_cost: num(j.connects_cost),\n    id: s.id\n  }});\n}\nout.sort((a,b)=> b.json.score - a.json.score);\nreturn out;"
+      },
+      "id": "b1a1e1a1-0005-4001-8001-000000000005",
+      "name": "Score & filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose" },
+          "combinator": "and",
+          "conditions": [
+            { "leftValue": "={{ $json.score }}", "rightValue": 60, "operator": { "type": "number", "operation": "gte" } }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1a1e1a1-0006-4001-8001-000000000006",
+      "name": "Worth opening? (score ≥ 60)",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1080, 300]
+    }
+  ],
+  "connections": {
+    "Run triage": { "main": [[{ "node": "Search Upwork (MCP bridge)", "type": "main", "index": 0 }]] },
+    "Search Upwork (MCP bridge)": { "main": [[{ "node": "Split jobs", "type": "main", "index": 0 }]] },
+    "Split jobs": { "main": [[{ "node": "Enrich (deep intel)", "type": "main", "index": 0 }]] },
+    "Enrich (deep intel)": { "main": [[{ "node": "Score & filter", "type": "main", "index": 0 }]] },
+    "Score & filter": { "main": [[{ "node": "Worth opening? (score ≥ 60)", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false
+}
