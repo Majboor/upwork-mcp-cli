@@ -1,0 +1,276 @@
+{
+  "name": "Upwork Job Radar (Official MCP)",
+  "flow": [
+    {
+      "id": 1,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "mapper": {
+        "url": "http://localhost:4178/api/search",
+        "serializeUrl": false,
+        "method": "GET",
+        "headers": [],
+        "qs": [
+          {
+            "name": "q",
+            "value": "n8n automation"
+          },
+          {
+            "name": "limit",
+            "value": "10"
+          }
+        ],
+        "bodyType": "raw",
+        "parseResponse": true,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "",
+        "shareCookies": false,
+        "ca": "",
+        "rejectUnauthorized": true,
+        "followRedirect": true,
+        "useQuerystring": false,
+        "gzip": true,
+        "useMtls": false,
+        "followAllRedirects": false
+      },
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0,
+          "name": "Search Upwork jobs"
+        },
+        "restore": {},
+        "parameters": [
+          {
+            "name": "handleErrors",
+            "type": "boolean",
+            "label": "Evaluate all states as errors (except for the specified ones)"
+          },
+          {
+            "name": "useNewZLibDeCompress",
+            "type": "boolean",
+            "label": "Use new ZLib DeCompress method"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "module": "builtin:BasicFeeder",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "array": "{{1.data.jobs}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0,
+          "name": "Iterate jobs"
+        },
+        "restore": {}
+      }
+    },
+    {
+      "id": 3,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "mapper": {
+        "url": "http://localhost:4178/api/job?id={{2.id}}",
+        "serializeUrl": false,
+        "method": "GET",
+        "headers": [],
+        "qs": [],
+        "bodyType": "raw",
+        "parseResponse": true,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "",
+        "shareCookies": false,
+        "ca": "",
+        "rejectUnauthorized": true,
+        "followRedirect": true,
+        "useQuerystring": false,
+        "gzip": true,
+        "useMtls": false,
+        "followAllRedirects": false
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0,
+          "name": "Enrich job (deep intel)"
+        },
+        "restore": {},
+        "parameters": [
+          {
+            "name": "handleErrors",
+            "type": "boolean",
+            "label": "Evaluate all states as errors (except for the specified ones)"
+          },
+          {
+            "name": "useNewZLibDeCompress",
+            "type": "boolean",
+            "label": "Use new ZLib DeCompress method"
+          }
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "parameters": {},
+      "mapper": null,
+      "metadata": {
+        "designer": {
+          "x": 900,
+          "y": 0,
+          "name": "Keep only strong matches"
+        }
+      },
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 5,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompress": true
+              },
+              "mapper": {
+                "url": "https://hook.make.com/REPLACE_WITH_YOUR_WEBHOOK_URL",
+                "serializeUrl": false,
+                "method": "POST",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "{\n  \"id\": \"{{2.id}}\",\n  \"title\": \"{{2.title}}\",\n  \"budget\": \"{{2.budget}}\",\n  \"proposal_count\": \"{{2.proposal_count}}\",\n  \"connects_cost\": \"{{3.data.job.connects_cost}}\",\n  \"bid_avg\": \"{{3.data.job.bid_stats.avg}}\",\n  \"client_country\": \"{{2.client.country}}\"\n}",
+                "authUser": "",
+                "authPass": "",
+                "timeout": "",
+                "shareCookies": false,
+                "ca": "",
+                "rejectUnauthorized": true,
+                "followRedirect": true,
+                "useQuerystring": false,
+                "gzip": true,
+                "useMtls": false,
+                "followAllRedirects": false
+              },
+              "filter": {
+                "name": "Strong match",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{2.proposal_count}}",
+                      "o": "number:lessorequal",
+                      "b": "5"
+                    },
+                    {
+                      "a": "{{3.data.job.connects_cost}}",
+                      "o": "number:lessorequal",
+                      "b": "16"
+                    }
+                  ]
+                ]
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1200,
+                  "y": -75,
+                  "name": "Send to your webhook/CRM"
+                },
+                "restore": {},
+                "parameters": [
+                  {
+                    "name": "handleErrors",
+                    "type": "boolean",
+                    "label": "Evaluate all states as errors (except for the specified ones)"
+                  },
+                  {
+                    "name": "useNewZLibDeCompress",
+                    "type": "boolean",
+                    "label": "Use new ZLib DeCompress method"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "flow": [],
+          "filter": {
+            "name": "Weak match (discard)",
+            "conditions": [
+              [
+                {
+                  "a": "{{2.proposal_count}}",
+                  "o": "number:greaterthan",
+                  "b": "5"
+                }
+              ],
+              [
+                {
+                  "a": "{{3.data.job.connects_cost}}",
+                  "o": "number:greaterthan",
+                  "b": "16"
+                }
+              ]
+            ]
+          },
+          "metadata": {
+            "designer": {
+              "x": 1200,
+              "y": 150,
+              "name": "Discard"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "instant": false,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "slots": null,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "us1.make.com",
+    "notes": [
+      "Import this blueprint into a scenario, then start the local bridge with: node examples/n8n/bridge.mjs",
+      "Module 5's webhook URL is a placeholder — replace it with your own Make webhook, Slack, Notion, or CRM HTTP endpoint.",
+      "If running Make Cloud (not self-hosted), expose the bridge with a tunnel (e.g. ngrok http 4178) and update the URLs in modules 1 and 3 accordingly."
+    ]
+  }
+}

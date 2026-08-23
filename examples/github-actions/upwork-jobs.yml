@@ -1,0 +1,133 @@
+# upwork-jobs.yml — EXAMPLE workflow. Copy this file into `.github/workflows/`
+# in your own repo (e.g. `.github/workflows/upwork-jobs.yml`) to use it as-is.
+#
+# Scheduled Upwork job search via the OFFICIAL Upwork MCP (through upwork-cli).
+# Every run: restores your OAuth token from a repo secret, searches Upwork for
+# KEYWORDS, uploads the results as a workflow artifact (jobs.json), and
+# optionally posts a summary to Slack.
+#
+# ---------------------------------------------------------------------------
+# Setup (one-time, on your own machine — GitHub Actions cannot log in for you
+# because `upwork login` opens a browser):
+#
+#   1. git clone https://github.com/Majboor/upwork-cli && cd upwork-cli
+#      npm install
+#      node bin/upwork.js login          # opens your browser once
+#
+#   2. Copy the contents of the token file it created:
+#        cat ~/.upwork-cli/tokens.json
+#
+#   3. In your GitHub repo: Settings → Secrets and variables → Actions →
+#      New repository secret → name it UPWORK_TOKENS_JSON → paste the
+#      entire JSON file contents as the value.
+#
+#   4. (Optional) Add a second secret SLACK_WEBHOOK_URL with a Slack
+#      Incoming Webhook URL if you want a Slack summary posted each run.
+#
+# See ./README.md for the full walkthrough, and the "Token & security note"
+# section in particular — tokens auto-refresh, but the secret is a point-in-
+# time snapshot and can go stale.
+# ---------------------------------------------------------------------------
+
+name: Upwork Job Search
+
+on:
+  schedule:
+    # every 2 hours. GitHub Actions cron uses UTC and may run a few minutes
+    # late during high load — don't rely on this for second-precision timing.
+    - cron: '0 */2 * * *'
+  workflow_dispatch: {}
+
+env:
+  # comma-separated search terms — edit these to match your niche
+  KEYWORDS: 'n8n automation,GoHighLevel,AI automation'
+  LIMIT: '10'
+  ORG: 'talent'
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore Upwork OAuth token
+        env:
+          UPWORK_TOKENS_JSON: ${{ secrets.UPWORK_TOKENS_JSON }}
+        run: |
+          if [ -z "$UPWORK_TOKENS_JSON" ]; then
+            echo "::error::UPWORK_TOKENS_JSON secret is not set. Run 'upwork login' locally" \
+                 "and paste the contents of ~/.upwork-cli/tokens.json into that repo secret." >&2
+            exit 1
+          fi
+          mkdir -p "$HOME/.upwork-cli"
+          printf '%s' "$UPWORK_TOKENS_JSON" > "$HOME/.upwork-cli/tokens.json"
+          chmod 600 "$HOME/.upwork-cli/tokens.json"
+
+      - name: Search Upwork jobs
+        run: |
+          set -euo pipefail
+          echo "[]" > jobs.json
+
+          IFS=',' read -ra KW <<< "$KEYWORDS"
+          for raw in "${KW[@]}"; do
+            q="$(echo "$raw" | sed 's/^ *//;s/ *$//')"
+            [ -z "$q" ] && continue
+            echo "Searching: $q"
+
+            out="$(node bin/upwork.js find_jobs search -p query="$q" -p limit="$LIMIT" --org "$ORG" --raw)"
+
+            # unwrap the MCP envelope: `.content[0].text` is a JSON string
+            jobs="$(printf '%s' "$out" | node -e '
+              let data = "";
+              process.stdin.on("data", (c) => (data += c));
+              process.stdin.on("end", () => {
+                const envelope = JSON.parse(data);
+                const text = envelope?.content?.[0]?.text ?? "{}";
+                const parsed = JSON.parse(text);
+                console.log(JSON.stringify(parsed.jobs ?? []));
+              });
+            ')"
+
+            # merge into jobs.json, tagging each job with the keyword that found it
+            node -e '
+              const fs = require("fs");
+              const existing = JSON.parse(fs.readFileSync("jobs.json", "utf8"));
+              const found = JSON.parse(process.argv[1]).map((j) => ({ ...j, _keyword: process.argv[2] }));
+              fs.writeFileSync("jobs.json", JSON.stringify(existing.concat(found), null, 2));
+            ' "$jobs" "$q"
+          done
+
+          count="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("jobs.json","utf8")).length)')"
+          echo "Found $count job(s) across ${#KW[@]} keyword(s)."
+          echo "JOB_COUNT=$count" >> "$GITHUB_ENV"
+
+      - name: Upload jobs.json artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: upwork-jobs-${{ github.run_id }}
+          path: jobs.json
+          retention-days: 14
+
+      - name: Post summary to Slack
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          titles="$(node -e '
+            const jobs = JSON.parse(require("fs").readFileSync("jobs.json", "utf8")).slice(0, 10);
+            console.log(jobs.map((j) => `• ${j.title || "Untitled job"} (${j._keyword})`).join("\n") || "No new jobs.");
+          ')"
+          text="*Upwork search — ${JOB_COUNT} job(s) found* for \`${KEYWORDS}\`\n${titles}"
+          payload="$(node -e 'console.log(JSON.stringify({ text: process.argv[1] }))' "$text")"
+          curl -sf -X POST -H 'Content-Type: application/json' -d "$payload" "$SLACK_WEBHOOK_URL"

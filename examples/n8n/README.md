@@ -56,7 +56,7 @@ node examples/n8n/bridge.mjs
 
 # 3. In n8n → Workflows → Import from File → pick one:
 #      examples/n8n/upwork-triage-starter.json   (simple: search → enrich → score)
-#      examples/n8n/upwork-triage-pro.json        (full: multi-keyword + AI analyze + draft)
+#      examples/n8n/upwork-MCP-automation.json        (full: multi-keyword + AI analyze + draft)
 #   Then click "Execute workflow".
 ```
 
@@ -69,7 +69,7 @@ That's it — the workflow's HTTP nodes already point at `http://localhost:4178`
 | File | What it does | Best for |
 |------|--------------|----------|
 | **`upwork-triage-starter.json`** | Search → split → enrich → score → "worth opening" filter | Understanding the pattern; a fast daily shortlist |
-| **`upwork-triage-pro.json`** | 4-keyword search → flatten + dedupe → enrich → score & tag → **Switch route** (HOT / WATCH / trust-risk) → **LLM analyze** the top pick → **LLM draft** a proposal → assemble digest + dashboard | Running your real pre-bid routine end to end |
+| **`upwork-MCP-automation.json`** | 4-keyword search → flatten + dedupe → enrich → score & tag → **Switch route** (HOT / WATCH / trust-risk) → **LLM analyze** the top pick → **LLM draft** a proposal → assemble digest + dashboard | Running your real pre-bid routine end to end |
 
 ### PRO workflow, node by node
 

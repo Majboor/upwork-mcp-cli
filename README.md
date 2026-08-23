@@ -1,21 +1,77 @@
-# upwork-cli
+# upwork-cli — Automate Upwork with the official Upwork MCP server
 
-A fast, thin CLI wrapper over the **Upwork MCP server** (`https://mcp.upwork.com/mcp`).
+<p align="center"><img src="docs/media/hero-mcp.png" alt="Automate Upwork with the official Upwork MCP server — CLI, n8n, and AI agents" width="100%"></p>
 
-It does its own OAuth 2.1 login (dynamic client registration + PKCE, tokens auto-refresh),
-then exposes **every tool the server publishes** through one generic dispatcher — nothing
-is hardcoded, so it automatically covers any tool Upwork adds later.
+**A fast, open-source command-line tool and automation toolkit for the official [Upwork MCP server](https://mcp.upwork.com/mcp).** Search Upwork jobs, pull competitor bid ranges and client spend history, score gigs, draft AI proposals, manage contracts and offers — all from your terminal, a script, [n8n](examples/n8n/), or an AI agent like Claude or Cursor.
+
+> **In one line:** this is how you **automate Upwork using the official MCP** — no scraping, no unofficial API, no browser bot. It does OAuth 2.1 for you and exposes **every tool Upwork's MCP publishes** (currently **46 tools · 142 actions · 693 params**).
+
+```sh
+# one-line install (clones, installs deps, puts `upwork` on your PATH)
+curl -fsSL https://raw.githubusercontent.com/Majboor/upwork-cli/main/install.sh | bash
+upwork login
+upwork find_jobs search -p query="n8n automation" -p limit=5 --org talent --table
+```
+
+**Topics:** upwork mcp · upwork mcp server · automate upwork · upwork automation · official upwork mcp · upwork api · upwork cli · upwork n8n · upwork ai agent · model context protocol · find upwork jobs · upwork proposal automation · upwork bid analysis.
+
+---
+
+## Table of contents
+
+- [What is the Upwork MCP server?](#what-is-the-upwork-mcp-server)
+- [What you can automate](#what-you-can-automate)
+- [Install](#install) · [Log in](#log-in) · [Everyday use](#everyday-use)
+- [Works with n8n, Claude, Cursor, ChatGPT & scripts](#works-with-n8n-claude-cursor-chatgpt--scripts)
+- [Data the Upwork MCP exposes](#data-the-upwork-mcp-exposes)
+- [Writes, drafts & uploads](#writes-drafts--uploads)
+- [Command & options reference](#everyday-use)
+- [FAQ](#faq)
+- **Guides:** [Automate Upwork](docs/automate-upwork.md) · [What is the Upwork MCP](docs/upwork-mcp-server.md) · [Recipes](docs/recipes.md) · [Every data point](docs/data-points.md) · [Use with Claude/Cursor/n8n](docs/clients-claude-cursor-n8n.md) · [FAQ](docs/faq.md)
+
+---
+
+## What is the Upwork MCP server?
+
+The **Upwork MCP server** (`https://mcp.upwork.com/mcp`) is Upwork's **official** [Model Context Protocol](https://modelcontextprotocol.io) endpoint. It lets AI agents and tools call Upwork's real functionality — searching jobs, reading client history, submitting proposals, managing contracts — with your authenticated account, over a documented protocol instead of screen-scraping.
+
+`upwork-cli` is a thin wrapper over it. It handles the login (OAuth 2.1 with dynamic client registration + PKCE, tokens auto-refresh) and turns every MCP tool into a plain command, so you can use the Upwork MCP from a terminal or a cron job without writing any protocol code. See the full explainer: **[What is the Upwork MCP server?](docs/upwork-mcp-server.md)**
+
+## What you can automate
+
+- 🔎 **Find & filter jobs** on a schedule — by keyword, type, budget, experience level.
+- 💰 **Read competitor bids** — average / min / max bid on a posting (normally a premium insight).
+- 🏦 **Vet clients** — lifetime spend, contracts, hire rate, feedback score, hours.
+- 🎯 **Score & triage** gigs into HOT / WATCH / SKIP before you spend connects.
+- ✍️ **Draft proposals** with an LLM using the real numbers, then submit via the draft→confirm flow.
+- 📊 **Pull dashboards** — connects balance, matching jobs, invitations, offers, messages.
+- 🤝 **Manage the pipeline** — contracts, milestones, offers, messages, talent lists.
+- 🤖 **Wire it into [n8n](examples/n8n/)**, Claude, Cursor, or any cron/script.
+
+Full walkthrough: **[How to automate Upwork with the official MCP](docs/automate-upwork.md)** · copy-paste **[recipes](docs/recipes.md)**.
 
 ## Install
 
+**One-line install (recommended):**
+
 ```sh
+curl -fsSL https://raw.githubusercontent.com/Majboor/upwork-cli/main/install.sh | bash
+```
+
+This clones the repo to `~/.upwork-cli-app`, installs dependencies, and symlinks `upwork`
+onto your PATH. (Tokens live separately in `~/.upwork-cli`.)
+
+**Manual install:**
+
+```sh
+git clone https://github.com/Majboor/upwork-cli.git
 cd upwork-cli
 npm install
-npm link        # optional: puts `upwork` on your PATH
+npm link                     # optional: puts `upwork` on your PATH
 # or just run: node bin/upwork.js <cmd>
 ```
 
-Requires Node 18+ (uses global `fetch`). Built and tested on Node 22.
+Requires Node 18+ (uses global `fetch`) and git. Built and tested on Node 22.
 
 ## Log in
 
@@ -62,6 +118,10 @@ upwork call find_jobs --json '{"action":"search","params":{"query":"n8n","job_ty
 
 Values are coerced: `123` → number, `true/false/null` → literals, `{...}`/`[...]` → JSON.
 
+> **Gotcha:** deep intel like `applicationsBidStats` and `jobActivity` comes back as a
+> JSON string nested in `content[0].text`. Use `--raw` and parse it (the [bridge](examples/n8n/bridge.mjs)
+> shows the exact unwrap). Also: `id` must be a **string** — pass it via `--json` if bare digits get rejected.
+
 ### Discovery commands
 
 | Command | What |
@@ -75,8 +135,48 @@ Values are coerced: `123` → number, `true/false/null` → literals, `{...}`/`[
 | `upwork refresh`         | re-fetch & cache the tool list |
 
 Typed help, `commands`, and pre-send validation are driven by `manifest.json` — a
-harvested map of all **46 tools · 142 actions · ~410 params** (see *Regenerating the
+harvested map of all **46 tools · 142 actions · 693 params** (see *Regenerating the
 manifest* below). If `manifest.json` is absent the CLI falls back to the live schema.
+
+## Works with n8n, Claude, Cursor, ChatGPT & scripts
+
+You can drive the Upwork MCP from anywhere that can run a command or hit HTTP:
+
+- **[n8n](examples/n8n/)** — import-ready workflows: search → enrich → score → draft AI proposals. Uses the included [`bridge.mjs`](examples/n8n/bridge.mjs).
+- **[Cron job alerts](examples/cron/)** — [`upwork-alerts.sh`](examples/cron/upwork-alerts.sh) searches your keywords on a schedule and surfaces only new jobs (with desktop notifications). Ready for `crontab`.
+- **Claude / Claude Code, Cursor, and other MCP clients** — point them at the CLI, or use the bridge as a local REST shim.
+- **Cron / shell / Python** — every command prints JSON (`--raw`) for easy piping.
+
+Details + config snippets: **[Use the Upwork MCP with Claude, Cursor, n8n & scripts](docs/clients-claude-cursor-n8n.md)**.
+
+## Examples & integrations
+
+Ready-to-use recipes in [`examples/`](examples/) — each is a self-contained way to **automate Upwork with the official MCP**:
+
+| Integration | What it does |
+|-------------|--------------|
+| **[n8n](examples/n8n/)** | Full no-code pipeline: search → enrich → score → AI proposals |
+| **[Make.com](examples/make/)** | Importable scenario blueprint over the REST bridge |
+| **[Zapier](examples/zapier/)** | Push new jobs to a Catch Hook → 6000+ apps |
+| **[Cron alerts](examples/cron/)** | Scheduled keyword search, only-new-jobs, desktop notifications |
+| **[GitHub Actions](examples/github-actions/)** | Scheduled job search in CI, results as an artifact |
+| **[Slack](examples/slack/)** | New matching jobs to a Slack channel |
+| **[Discord](examples/discord/)** | New jobs as rich Discord embeds |
+| **[Telegram](examples/telegram/)** | Job alerts via a Telegram bot |
+| **[Google Sheets](examples/google-sheets/)** | Append jobs to a spreadsheet (Python or Apps Script) |
+| **[Airtable](examples/airtable/)** | Sync jobs into an Airtable base |
+| **[Notion](examples/notion/)** | Push jobs into a Notion database |
+| **[Python](examples/python/)** | Pure-stdlib triage client with Alpha Score |
+
+## Data the Upwork MCP exposes
+
+Highlights (full list in **[Every data point the Upwork MCP exposes](docs/data-points.md)**):
+
+- **Per job:** competitor bid stats (avg/min/max), applicant & interview counts, connects cost, screening questions, full description, skills, budget.
+- **Per client:** lifetime spend, total contracts, total hires, hours, feedback score, work history, verification & location.
+- **Rate insights:** the going hourly range for similar work.
+- **Your account:** connects balance, earnings, contracts, offers, invitations, messages, milestones.
+- **People:** freelancer search + profiles (as a client).
 
 ## Writes, drafts & uploads
 
@@ -146,6 +246,8 @@ src/upload.js     headless attachment upload orchestration
 src/table.js      generic table rendering for list-shaped results
 src/util.js       config, arg parsing, org resolution, deep-find, output
 manifest.json     harvested typed map of every tool/action/param
+examples/n8n/     import-ready n8n automation workflows + REST bridge
+docs/             guides: automate Upwork, MCP explainer, recipes, data points, FAQ
 ```
 
 ## Regenerating the manifest
@@ -165,8 +267,24 @@ actions:[{ name, description, params:[{ name, type, required, nested, enum, desc
 Every write action still follows the Upwork MCP draft→confirm model, and binding
 financial actions (offers, milestone funding) complete on upwork.com.
 
-## Examples
+## FAQ
 
-- **[n8n automation](examples/n8n/)** — import-ready n8n workflows that search Upwork
-  on a schedule, enrich each job with competitor bid ranges + client spend history,
-  score them (HOT/WATCH/SKIP), and draft AI proposals — via a tiny bridge over this CLI.
+**What is the Upwork MCP server?** Upwork's official Model Context Protocol endpoint at `https://mcp.upwork.com/mcp` — a supported way for AI agents and tools to use Upwork with your account. See [the guide](docs/upwork-mcp-server.md).
+
+**How do I automate Upwork?** Log in once, then script `upwork find_jobs`, `find_jobs get`, and the write tools — or import the [n8n workflow](examples/n8n/). Full walkthrough: [Automate Upwork](docs/automate-upwork.md).
+
+**Is this the official Upwork MCP?** Yes — this CLI talks to Upwork's own MCP server. It is an independent open-source client, not affiliated with Upwork.
+
+**Is automating Upwork allowed?** This uses Upwork's official MCP with your authenticated account — the same data and actions you have logged in. Use it within Upwork's Terms of Service; don't spam proposals or misuse client data.
+
+**Do I need Upwork Freelancer Plus / premium?** No API key needed beyond logging in. Some insights that feel "premium" (like competitor bid ranges) are returned by the MCP itself.
+
+**Can I use it with Claude, Cursor, or ChatGPT?** Yes — see [Use with Claude, Cursor & n8n](docs/clients-claude-cursor-n8n.md).
+
+**Where are my tokens stored?** In `~/.upwork-cli/` (mode 0600), never in this repo.
+
+**More questions:** the full [FAQ](docs/faq.md).
+
+---
+
+<sub>Keywords: upwork mcp, upwork mcp server, official upwork mcp, automate upwork, upwork automation, i automated upwork using the official mcp, upwork cli, upwork api, upwork n8n automation, upwork ai agent, find upwork jobs cli, upwork proposal automation, upwork competitor bids, upwork client history, model context protocol upwork, upwork bot alternative, upwork job scraper alternative.</sub>
