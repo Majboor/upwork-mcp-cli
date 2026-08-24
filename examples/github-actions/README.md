@@ -9,7 +9,7 @@ Run **scheduled Upwork job searches in GitHub Actions** — no server to babysit
 1. **Copy the workflow** into your repo (this repo, a fork, or wherever you keep `upwork-cli`): copy [`upwork-jobs.yml`](./upwork-jobs.yml) to `.github/workflows/upwork-jobs.yml`.
 2. **Get a token file** by logging in locally — GitHub Actions can't do this step because `upwork login` opens a real browser:
    ```sh
-   git clone https://github.com/Majboor/upwork-cli && cd upwork-cli
+   git clone https://github.com/Majboor/upwork-mcp-cli && cd upwork-mcp-cli
    npm install
    node bin/upwork.js login      # opens your browser once
    cat ~/.upwork-cli/tokens.json # copy this whole file's contents

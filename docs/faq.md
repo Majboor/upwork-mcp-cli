@@ -41,7 +41,7 @@ Competitor bids, client lifetime spend and hire history, rate insights, dashboar
 One line:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Majboor/upwork-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Majboor/upwork-mcp-cli/main/install.sh | bash
 ```
 
 Then `upwork login`. Manual install and requirements are in the [README](../README.md#install).

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # upwork-cli installer — automate Upwork with the official Upwork MCP server.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Majboor/upwork-cli/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Majboor/upwork-mcp-cli/main/install.sh | bash
 #
 # Clones (or updates) the repo, installs dependencies, and puts `upwork` on your PATH.
 # Then run:  upwork login
 set -euo pipefail
 
-REPO_URL="${UPWORK_CLI_REPO:-https://github.com/Majboor/upwork-cli}"
+REPO_URL="${UPWORK_CLI_REPO:-https://github.com/Majboor/upwork-mcp-cli}"
 INSTALL_DIR="${UPWORK_CLI_DIR:-$HOME/.upwork-cli-app}"   # code lives here (tokens stay in ~/.upwork-cli)
 BIN_DIR="${UPWORK_CLI_BIN:-/usr/local/bin}"
 
@@ -62,5 +62,5 @@ cat <<EOF
     upwork find_jobs search -p query="ai automation" -p limit=5 --org talent --table
 
   Automate it: $INSTALL_DIR/examples/n8n/
-  Docs:        https://github.com/Majboor/upwork-cli#readme
+  Docs:        https://github.com/Majboor/upwork-mcp-cli#readme
 EOF

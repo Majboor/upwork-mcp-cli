@@ -20,7 +20,7 @@ Automating Upwork by scraping HTML or driving a headless browser breaks constant
 ## Step 1 — Log in to the Upwork official MCP
 
 ```sh
-git clone https://github.com/Majboor/upwork-cli && cd upwork-cli
+git clone https://github.com/Majboor/upwork-mcp-cli && cd upwork-mcp-cli
 npm install
 node bin/upwork.js login      # opens your browser once; tokens auto-refresh after
 ```

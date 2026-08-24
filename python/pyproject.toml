@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "upwork-mcp-cli"
+version = "0.1.0"
+description = "A simple Python wrapper for the Upwork MCP server — search jobs, competitor bids, client history, proposals, and automate Upwork."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "ISC" }
+keywords = ["upwork", "upwork mcp", "upwork-mcp", "mcp", "model-context-protocol", "upwork-api", "automate upwork", "upwork automation", "freelance"]
+authors = [{ name = "Majboor" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: ISC License (ISCL)",
+  "Operating System :: OS Independent",
+  "Topic :: Office/Business",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Majboor/upwork-mcp-cli"
+Repository = "https://github.com/Majboor/upwork-mcp-cli"
+Issues = "https://github.com/Majboor/upwork-mcp-cli/issues"
+
+[tool.setuptools]
+packages = ["upwork_mcp"]

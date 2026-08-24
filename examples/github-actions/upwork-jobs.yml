@@ -10,7 +10,7 @@
 # Setup (one-time, on your own machine — GitHub Actions cannot log in for you
 # because `upwork login` opens a browser):
 #
-#   1. git clone https://github.com/Majboor/upwork-cli && cd upwork-cli
+#   1. git clone https://github.com/Majboor/upwork-mcp-cli && cd upwork-mcp-cli
 #      npm install
 #      node bin/upwork.js login          # opens your browser once
 #

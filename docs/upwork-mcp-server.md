@@ -49,7 +49,7 @@ See **[every data point the Upwork official MCP exposes](data-points.md)**.
 The fastest way is this CLI:
 
 ```sh
-git clone https://github.com/Majboor/upwork-cli && cd upwork-cli
+git clone https://github.com/Majboor/upwork-mcp-cli && cd upwork-mcp-cli
 npm install
 node bin/upwork.js login          # OAuth to the Upwork official MCP, once
 node bin/upwork.js commands        # see every tool the MCP publishes

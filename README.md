@@ -8,7 +8,7 @@
 
 ```sh
 # one-line install (clones, installs deps, puts `upwork` on your PATH)
-curl -fsSL https://raw.githubusercontent.com/Majboor/upwork-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Majboor/upwork-mcp-cli/main/install.sh | bash
 upwork login
 upwork find_jobs search -p query="n8n automation" -p limit=5 --org talent --table
 ```
@@ -55,7 +55,7 @@ Full walkthrough: **[How to automate Upwork with the official MCP](docs/automate
 **One-line install (recommended):**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Majboor/upwork-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Majboor/upwork-mcp-cli/main/install.sh | bash
 ```
 
 This clones the repo to `~/.upwork-cli-app`, installs dependencies, and symlinks `upwork`
@@ -64,8 +64,8 @@ onto your PATH. (Tokens live separately in `~/.upwork-cli`.)
 **Manual install:**
 
 ```sh
-git clone https://github.com/Majboor/upwork-cli.git
-cd upwork-cli
+git clone https://github.com/Majboor/upwork-mcp-cli.git
+cd upwork-mcp-cli
 npm install
 npm link                     # optional: puts `upwork` on your PATH
 # or just run: node bin/upwork.js <cmd>
@@ -168,6 +168,27 @@ Ready-to-use recipes in [`examples/`](examples/) — each is a self-contained wa
 | **[Notion](examples/notion/)** | Push jobs into a Notion database |
 | **[Python](examples/python/)** | Pure-stdlib triage client with Alpha Score |
 
+## Python library
+
+Prefer Python? There's a tiny, **zero-dependency** wrapper in [`python/`](python/) (`pip install upwork-mcp-cli`):
+
+```python
+from upwork_mcp import Upwork
+
+up = Upwork()                                   # uses the `upwork` CLI you logged into
+for job in up.search("n8n automation", limit=5):
+    print(job["title"], job["proposal_count"])
+
+job = up.get_job(up.search("shopify")[0]["id"])
+print(job["bid_stats"])          # competitor bids {avg,min,max}
+print(job["client_record"])      # client spend, hires, feedback
+
+up.dashboard(); up.profile(); up.proposals(); up.messages(unread=True)
+up.triage("GoHighLevel", limit=10, enrich=3)    # scored HOT/WATCH/SKIP shortlist
+```
+
+Full guide: **[python/README.md](python/)**.
+
 ## Data the Upwork MCP exposes
 
 Highlights (full list in **[Every data point the Upwork MCP exposes](docs/data-points.md)**):
@@ -246,6 +267,7 @@ src/upload.js     headless attachment upload orchestration
 src/table.js      generic table rendering for list-shaped results
 src/util.js       config, arg parsing, org resolution, deep-find, output
 manifest.json     harvested typed map of every tool/action/param
+python/           zero-dependency Python library (upwork_mcp) + pyproject
 examples/n8n/     import-ready n8n automation workflows + REST bridge
 docs/             guides: automate Upwork, MCP explainer, recipes, data points, FAQ
 ```

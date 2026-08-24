@@ -47,7 +47,7 @@ n8n's HTTP node speaks REST, not MCP's `tools/call` envelope. **`bridge.mjs`** i
 
 ```bash
 # 1. Clone + install the CLI, then log in to Upwork (opens your browser once)
-git clone https://github.com/Majboor/upwork-cli && cd upwork-cli
+git clone https://github.com/Majboor/upwork-mcp-cli && cd upwork-mcp-cli
 npm install && node bin/upwork.js login
 
 # 2. Start the bridge (defaults to http://localhost:4178)

@@ -1,15 +1,34 @@
 {
-  "name": "upwork-cli",
+  "name": "upwork-mcp-cli",
   "version": "0.1.0",
-  "description": "Fast CLI wrapper over the Upwork MCP server (exposes all tools)",
+  "description": "A CLI + Python wrapper for the Upwork MCP server — search jobs, competitor bids, client history, proposals, and automate Upwork.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": [
+    "upwork",
+    "upwork-mcp",
+    "upwork mcp",
+    "mcp",
+    "model-context-protocol",
+    "upwork-api",
+    "upwork-cli",
+    "automate-upwork",
+    "upwork-automation",
+    "n8n"
+  ],
   "author": "",
   "license": "ISC",
   "type": "module",
+  "homepage": "https://github.com/Majboor/upwork-mcp-cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Majboor/upwork-mcp-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Majboor/upwork-mcp-cli/issues"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0"
   },
