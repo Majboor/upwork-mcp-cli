@@ -1,60 +1,608 @@
 {
   "name": "Upwork Pre-Bid Triage · PRO",
   "nodes": [
-    { "parameters": {}, "id": "aa000000-0000-4000-8000-000000000001", "name": "▶ Run now", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [-560, 340] },
-    { "parameters": { "rule": { "interval": [ { "field": "hours", "hoursInterval": 1 } ] } }, "id": "aa000000-0000-4000-8000-000000000002", "name": "🕒 Every hour", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [-560, 540] },
-
-    { "parameters": { "jsCode": "// keyword set to sweep — edit freely\nreturn [\n  { json: { q: 'AI automation' } },\n  { json: { q: 'GoHighLevel' } },\n  { json: { q: 'n8n' } },\n  { json: { q: 'make.com automation' } }\n];" }, "id": "aa000000-0000-4000-8000-000000000003", "name": "① Keywords", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [-300, 300] },
-    { "parameters": { "url": "http://localhost:4178/api/search", "sendQuery": true, "queryParameters": { "parameters": [ { "name": "q", "value": "={{ $json.q }}" }, { "name": "limit", "value": "6" } ] }, "options": {} }, "id": "aa000000-0000-4000-8000-000000000004", "name": "② Search (per keyword)", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [-60, 300] },
-    { "parameters": { "jsCode": "// flatten all keyword results + dedupe by job id\nconst seen = new Set(); const out = [];\nfor (const it of $input.all()) {\n  for (const j of (it.json.jobs || [])) {\n    if (seen.has(j.id)) continue; seen.add(j.id); out.push({ json: j });\n  }\n}\nreturn out;" }, "id": "aa000000-0000-4000-8000-000000000005", "name": "③ Flatten + dedupe", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [180, 300] },
-    { "parameters": { "url": "http://localhost:4178/api/job", "sendQuery": true, "queryParameters": { "parameters": [ { "name": "id", "value": "={{ $json.id }}" } ] }, "options": {} }, "id": "aa000000-0000-4000-8000-000000000006", "name": "④ Enrich (deep intel)", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [420, 300] },
-    { "parameters": { "jsCode": "// zip search + deep intel, score, tag, add trust gap\nconst search = $('③ Flatten + dedupe').all();\nconst deep = $input.all();\nconst num = v => (v==null||v===''||isNaN(+v)) ? null : +v;\nconst out = [];\nfor (let i=0;i<deep.length;i++){\n  const s = (search[i]||{}).json || {};\n  const j = (deep[i].json.job) || {};\n  const bid = j.bid_stats || {}; const cr = j.client_record || {};\n  const wh = j.work_history || {}; const priv = [...(wh.closed||[]),...(wh.open||[])].map(r=>num(r.feedback_to_client_score)).filter(x=>x!=null&&x>0);\n  const privAvg = priv.length ? +(priv.reduce((a,b)=>a+b,0)/priv.length).toFixed(2) : null;\n  const spend = num(cr.spend_total); const prop = num(s.proposal_count)||0;\n  const hired = (j.job_activity&&j.job_activity.totalHired)||0;\n  const score = Math.round(100*(0.34*(spend!=null?Math.min(1,Math.log10(spend+1)/6):0.2)+0.28*(1-Math.min(1,prop/50))+0.20*(hired>0?0.2:1)+0.18*(bid.avg!=null?Math.min(1,bid.avg/120):0.4)));\n  const tag = score>=72?'HOT':score>=55?'WATCH':'SKIP';\n  const feedback = num(cr.feedback_score);\n  out.push({ json: { score, tag, title: s.title||j.title, type: s.job_type, proposals: prop, bid_avg: bid.avg, bid_min: bid.min, bid_max: bid.max, client_spend: spend, client_country:(s.client||{}).country, verified:(s.client||{}).verification_status==='VERIFIED', connects_cost: num(j.connects_cost), feedback, private_avg: privAvg, trust_gap:(feedback!=null&&privAvg!=null)?+(feedback-privAvg).toFixed(2):null, id: s.id } });\n}\nout.sort((a,b)=>b.json.score-a.json.score);\nreturn out;" }, "id": "aa000000-0000-4000-8000-000000000007", "name": "⑤ Score & tag", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [660, 300] },
-
-    { "parameters": { "rules": { "values": [
-      { "conditions": { "options": { "caseSensitive": true, "typeValidation": "loose" }, "combinator": "and", "conditions": [ { "leftValue": "={{ $json.tag }}", "rightValue": "HOT", "operator": { "type": "string", "operation": "equals" } } ] }, "outputKey": "🔥 HOT" },
-      { "conditions": { "options": { "caseSensitive": true, "typeValidation": "loose" }, "combinator": "and", "conditions": [ { "leftValue": "={{ $json.tag }}", "rightValue": "WATCH", "operator": { "type": "string", "operation": "equals" } } ] }, "outputKey": "👀 WATCH" },
-      { "conditions": { "options": { "caseSensitive": true, "typeValidation": "loose" }, "combinator": "and", "conditions": [ { "leftValue": "={{ $json.trust_gap }}", "rightValue": 0.5, "operator": { "type": "number", "operation": "gte" } } ] }, "outputKey": "🚩 Trust risk" }
-    ] }, "options": { "fallbackOutput": "extra" } }, "id": "aa000000-0000-4000-8000-000000000008", "name": "⑥ Route by signal", "type": "n8n-nodes-base.switch", "typeVersion": 3, "position": [940, 300] },
-
-    { "parameters": { "maxItems": 1 }, "id": "aa000000-0000-4000-8000-000000000009", "name": "🎯 Top pick", "type": "n8n-nodes-base.limit", "typeVersion": 1, "position": [1200, 120] },
-    { "parameters": { "method": "POST", "url": "http://localhost:4178/api/analyze", "sendQuery": true, "queryParameters": { "parameters": [ { "name": "id", "value": "={{ $json.id }}" } ] }, "options": { "timeout": 240000 } }, "id": "aa000000-0000-4000-8000-00000000000a", "name": "⚡ Analyze (LLM)", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [1440, 40], "onError": "continueRegularOutput" },
-    { "parameters": { "method": "POST", "url": "http://localhost:4178/api/draft", "sendQuery": true, "queryParameters": { "parameters": [ { "name": "id", "value": "={{ $('🎯 Top pick').first().json.id }}" } ] }, "options": { "timeout": 240000 } }, "id": "aa000000-0000-4000-8000-00000000000b", "name": "✍ Draft proposal (LLM)", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [1680, 40], "onError": "continueRegularOutput" },
-    { "parameters": { "jsCode": "// bundle the top pick with its LLM analysis + drafted proposal\nconst job = $('🎯 Top pick').first().json;\nconst analysis = ($('⚡ Analyze (LLM)').first().json||{}).analysis || '(analysis pending)';\nconst draft = ($('✍ Draft proposal (LLM)').first().json||{}).draft || '(draft pending)';\nreturn [{ json: { ...job, llm_analysis: analysis, llm_draft: draft } }];" }, "id": "aa000000-0000-4000-8000-00000000000c", "name": "📋 Assemble intel + proposal", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1920, 40] },
-
-    { "parameters": {}, "id": "aa000000-0000-4000-8000-00000000000d", "name": "👀 Watchlist", "type": "n8n-nodes-base.noOp", "typeVersion": 1, "position": [1200, 320] },
-    { "parameters": {}, "id": "aa000000-0000-4000-8000-00000000000e", "name": "🚩 Risky client alert", "type": "n8n-nodes-base.noOp", "typeVersion": 1, "position": [1200, 500] },
-
-    { "parameters": { "jsCode": "// build a human digest from the full scored set\nconst jobs = $('⑤ Score & tag').all().map(i=>i.json);\nconst money=v=>v==null?'—':Math.abs(v)>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v;\nconst hot=jobs.filter(j=>j.tag==='HOT'), watch=jobs.filter(j=>j.tag==='WATCH'), risk=jobs.filter(j=>j.trust_gap!=null&&j.trust_gap>=0.5);\nconst L=['# Pre-Bid Digest','',`Scanned **${jobs.length}** gigs · ${hot.length} HOT · ${watch.length} WATCH · ${risk.length} trust-risk`,'','## Open first'];\nhot.slice(0,5).forEach(j=>L.push(`- **[${j.score}] ${j.title}** — ${j.client_country||''} · spend ${money(j.client_spend)} · ${j.proposals} proposals · bid ${j.bid_avg!=null?('$'+Math.round(j.bid_avg)):'—'}`));\nif(risk.length){L.push('','## ⚠ Trust-gap flags');risk.forEach(j=>L.push(`- ${j.title} — public ${j.feedback} vs private ${j.private_avg} (gap +${j.trust_gap})`));}\nreturn [{ json: { digest: L.join('\\n'), scanned: jobs.length, hot: hot.length, watch: watch.length, risk: risk.length } }];" }, "id": "aa000000-0000-4000-8000-00000000000f", "name": "📊 Build digest", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1200, 700] },
-    { "parameters": {}, "id": "aa000000-0000-4000-8000-000000000010", "name": "📤 Digest ready", "type": "n8n-nodes-base.noOp", "typeVersion": 1, "position": [1440, 700] },
-
-    { "parameters": { "url": "http://localhost:4178/api/dashboard", "options": {} }, "id": "aa000000-0000-4000-8000-000000000011", "name": "📈 My dashboard", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [-300, 560] },
-    { "parameters": {}, "id": "aa000000-0000-4000-8000-000000000012", "name": "💠 Connects snapshot", "type": "n8n-nodes-base.noOp", "typeVersion": 1, "position": [-60, 560] },
-
-    { "parameters": { "content": "## ① INGEST — multi-keyword sweep\nFan out across keywords → dedupe by job id. All calls go through the **MCP bridge** (OAuth + refresh handled).", "height": 300, "width": 720, "color": 4 }, "id": "aa000000-0000-4000-8000-000000000021", "name": "note-ingest", "type": "n8n-nodes-base.stickyNote", "typeVersion": 1, "position": [-340, 200] },
-    { "parameters": { "content": "## ② ENRICH + SCORE\nPull deep intel per gig (competitor bids, client spend, **private ratings**), compute an opportunity score + trust gap.", "height": 300, "width": 480, "color": 5 }, "id": "aa000000-0000-4000-8000-000000000022", "name": "note-score", "type": "n8n-nodes-base.stickyNote", "typeVersion": 1, "position": [400, 200] },
-    { "parameters": { "content": "## ③ ROUTE\nSwitch each gig → HOT · WATCH · Trust-risk.", "height": 620, "width": 220, "color": 3 }, "id": "aa000000-0000-4000-8000-000000000023", "name": "note-route", "type": "n8n-nodes-base.stickyNote", "typeVersion": 1, "position": [910, 0] },
-    { "parameters": { "content": "## ④ LLM AGENT (Codex, free)\nOn the top pick: **⚡ analyze** (fit / win-odds / suggested bid / red flags) + **✍ draft a proposal**. Wire an approval before any submit.", "height": 260, "width": 700, "color": 2 }, "id": "aa000000-0000-4000-8000-000000000024", "name": "note-llm", "type": "n8n-nodes-base.stickyNote", "typeVersion": 1, "position": [1160, -30] },
-    { "parameters": { "content": "## ⑤ DIGEST + ALERTS\nHuman-readable digest of the batch + trust-gap flags. Add Slack / email here.", "height": 260, "width": 480, "color": 6 }, "id": "aa000000-0000-4000-8000-000000000025", "name": "note-digest", "type": "n8n-nodes-base.stickyNote", "typeVersion": 1, "position": [1160, 640] }
+    {
+      "id": "aa000000-0000-4000-8000-000000000001",
+      "name": "▶ Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "position": [
+        -820,
+        300
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000002",
+      "name": "🕒 Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        -820,
+        520
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "typeVersion": 1.2
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000003",
+      "name": "① Keywords",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -500,
+        360
+      ],
+      "parameters": {
+        "jsCode": "// keyword set to sweep — edit freely\nreturn [\n  { json: { q: 'AI automation' } },\n  { json: { q: 'GoHighLevel' } },\n  { json: { q: 'n8n' } },\n  { json: { q: 'make.com automation' } }\n];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000004",
+      "name": "② Search (per keyword)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -180,
+        360
+      ],
+      "parameters": {
+        "url": "http://localhost:4178/api/search",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.q }}"
+            },
+            {
+              "name": "limit",
+              "value": "6"
+            }
+          ]
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000005",
+      "name": "③ Flatten + dedupe",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        140,
+        360
+      ],
+      "parameters": {
+        "jsCode": "// flatten all keyword results + dedupe by job id\nconst seen = new Set(); const out = [];\nfor (const it of $input.all()) {\n  for (const j of (it.json.jobs || [])) {\n    if (seen.has(j.id)) continue; seen.add(j.id); out.push({ json: j });\n  }\n}\nreturn out;"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000006",
+      "name": "④ Enrich (deep intel)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        460,
+        360
+      ],
+      "parameters": {
+        "url": "http://localhost:4178/api/job",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000007",
+      "name": "⑤ Score & tag",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        780,
+        360
+      ],
+      "parameters": {
+        "jsCode": "// zip search + deep intel, score, tag, add trust gap\nconst search = $('③ Flatten + dedupe').all();\nconst deep = $input.all();\nconst num = v => (v==null||v===''||isNaN(+v)) ? null : +v;\nconst out = [];\nfor (let i=0;i<deep.length;i++){\n  const s = (search[i]||{}).json || {};\n  const j = (deep[i].json.job) || {};\n  const bid = j.bid_stats || {}; const cr = j.client_record || {};\n  const wh = j.work_history || {}; const priv = [...(wh.closed||[]),...(wh.open||[])].map(r=>num(r.feedback_to_client_score)).filter(x=>x!=null&&x>0);\n  const privAvg = priv.length ? +(priv.reduce((a,b)=>a+b,0)/priv.length).toFixed(2) : null;\n  const spend = num(cr.spend_total); const prop = num(s.proposal_count)||0;\n  const hired = (j.job_activity&&j.job_activity.totalHired)||0;\n  const score = Math.round(100*(0.34*(spend!=null?Math.min(1,Math.log10(spend+1)/6):0.2)+0.28*(1-Math.min(1,prop/50))+0.20*(hired>0?0.2:1)+0.18*(bid.avg!=null?Math.min(1,bid.avg/120):0.4)));\n  const tag = score>=72?'HOT':score>=55?'WATCH':'SKIP';\n  const feedback = num(cr.feedback_score);\n  out.push({ json: { score, tag, title: s.title||j.title, type: s.job_type, proposals: prop, bid_avg: bid.avg, bid_min: bid.min, bid_max: bid.max, client_spend: spend, client_country:(s.client||{}).country, verified:(s.client||{}).verification_status==='VERIFIED', connects_cost: num(j.connects_cost), feedback, private_avg: privAvg, trust_gap:(feedback!=null&&privAvg!=null)?+(feedback-privAvg).toFixed(2):null, id: s.id } });\n}\nout.sort((a,b)=>b.json.score-a.json.score);\nreturn out;"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000008",
+      "name": "⑥ Route by signal",
+      "type": "n8n-nodes-base.switch",
+      "position": [
+        1100,
+        360
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "🔥 HOT",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tag }}",
+                    "rightValue": "HOT"
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "👀 WATCH",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tag }}",
+                    "rightValue": "WATCH"
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "🚩 Trust risk",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "number",
+                      "operation": "gte"
+                    },
+                    "leftValue": "={{ $json.trust_gap }}",
+                    "rightValue": 0.5
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "typeVersion": 3
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000009",
+      "name": "🎯 Top pick",
+      "type": "n8n-nodes-base.limit",
+      "position": [
+        1420,
+        120
+      ],
+      "parameters": {
+        "maxItems": 1
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "aa000000-0000-4000-8000-00000000000a",
+      "name": "⚡ Analyze (LLM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "onError": "continueRegularOutput",
+      "position": [
+        1740,
+        120
+      ],
+      "parameters": {
+        "url": "http://localhost:4178/api/analyze",
+        "method": "POST",
+        "options": {
+          "timeout": 240000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "aa000000-0000-4000-8000-00000000000b",
+      "name": "✍ Draft proposal (LLM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "onError": "continueRegularOutput",
+      "position": [
+        2060,
+        120
+      ],
+      "parameters": {
+        "url": "http://localhost:4178/api/draft",
+        "method": "POST",
+        "options": {
+          "timeout": 240000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "={{ $('🎯 Top pick').first().json.id }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "aa000000-0000-4000-8000-00000000000c",
+      "name": "📋 Assemble intel + proposal",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        2380,
+        120
+      ],
+      "parameters": {
+        "jsCode": "// bundle the top pick with its LLM analysis + drafted proposal\nconst job = $('🎯 Top pick').first().json;\nconst analysis = ($('⚡ Analyze (LLM)').first().json||{}).analysis || '(analysis pending)';\nconst draft = ($('✍ Draft proposal (LLM)').first().json||{}).draft || '(draft pending)';\nreturn [{ json: { ...job, llm_analysis: analysis, llm_draft: draft } }];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "aa000000-0000-4000-8000-00000000000d",
+      "name": "👀 Watchlist",
+      "type": "n8n-nodes-base.noOp",
+      "position": [
+        1420,
+        380
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "aa000000-0000-4000-8000-00000000000e",
+      "name": "🚩 Risky client alert",
+      "type": "n8n-nodes-base.noOp",
+      "position": [
+        1420,
+        560
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "aa000000-0000-4000-8000-00000000000f",
+      "name": "📊 Build digest",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        780,
+        780
+      ],
+      "parameters": {
+        "jsCode": "// build a human digest from the full scored set\nconst jobs = $('⑤ Score & tag').all().map(i=>i.json);\nconst money=v=>v==null?'—':Math.abs(v)>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v;\nconst hot=jobs.filter(j=>j.tag==='HOT'), watch=jobs.filter(j=>j.tag==='WATCH'), risk=jobs.filter(j=>j.trust_gap!=null&&j.trust_gap>=0.5);\nconst L=['# Pre-Bid Digest','',`Scanned **${jobs.length}** gigs · ${hot.length} HOT · ${watch.length} WATCH · ${risk.length} trust-risk`,'','## Open first'];\nhot.slice(0,5).forEach(j=>L.push(`- **[${j.score}] ${j.title}** — ${j.client_country||''} · spend ${money(j.client_spend)} · ${j.proposals} proposals · bid ${j.bid_avg!=null?('$'+Math.round(j.bid_avg)):'—'}`));\nif(risk.length){L.push('','## ⚠ Trust-gap flags');risk.forEach(j=>L.push(`- ${j.title} — public ${j.feedback} vs private ${j.private_avg} (gap +${j.trust_gap})`));}\nreturn [{ json: { digest: L.join('\\n'), scanned: jobs.length, hot: hot.length, watch: watch.length, risk: risk.length } }];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000010",
+      "name": "📤 Digest ready",
+      "type": "n8n-nodes-base.noOp",
+      "position": [
+        1100,
+        780
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000011",
+      "name": "📈 My dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -500,
+        640
+      ],
+      "parameters": {
+        "url": "http://localhost:4178/api/dashboard",
+        "options": {}
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000012",
+      "name": "💠 Connects snapshot",
+      "type": "n8n-nodes-base.noOp",
+      "position": [
+        -180,
+        640
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000021",
+      "name": "note-ingest",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -560,
+        250
+      ],
+      "parameters": {
+        "color": 4,
+        "width": 860,
+        "height": 240,
+        "content": "## ① INGEST — multi-keyword sweep\nFan out across keywords → dedupe by job id. All calls go through the **MCP bridge** (OAuth + refresh handled)."
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000022",
+      "name": "note-score",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        400,
+        250
+      ],
+      "parameters": {
+        "color": 5,
+        "width": 520,
+        "height": 240,
+        "content": "## ② ENRICH + SCORE\nPull deep intel per gig (competitor bids, client spend, **private ratings**), compute an opportunity score + trust gap."
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000023",
+      "name": "note-route",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1040,
+        60
+      ],
+      "parameters": {
+        "color": 3,
+        "width": 240,
+        "height": 620,
+        "content": "## ③ ROUTE\nSwitch each gig → HOT · WATCH · Trust-risk."
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000024",
+      "name": "note-llm",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1360,
+        20
+      ],
+      "parameters": {
+        "color": 2,
+        "width": 1180,
+        "height": 240,
+        "content": "## ④ LLM AGENT (Codex, free)\nOn the top pick: **⚡ analyze** (fit / win-odds / suggested bid / red flags) + **✍ draft a proposal**. Wire an approval before any submit."
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000025",
+      "name": "note-digest",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        720,
+        700
+      ],
+      "parameters": {
+        "color": 6,
+        "width": 500,
+        "height": 230,
+        "content": "## ⑤ DIGEST + ALERTS\nHuman-readable digest of the batch + trust-gap flags. Add Slack / email here."
+      },
+      "typeVersion": 1
+    }
   ],
-  "connections": {
-    "▶ Run now": { "main": [[ { "node": "① Keywords", "type": "main", "index": 0 }, { "node": "📈 My dashboard", "type": "main", "index": 0 } ]] },
-    "🕒 Every hour": { "main": [[ { "node": "① Keywords", "type": "main", "index": 0 } ]] },
-    "① Keywords": { "main": [[ { "node": "② Search (per keyword)", "type": "main", "index": 0 } ]] },
-    "② Search (per keyword)": { "main": [[ { "node": "③ Flatten + dedupe", "type": "main", "index": 0 } ]] },
-    "③ Flatten + dedupe": { "main": [[ { "node": "④ Enrich (deep intel)", "type": "main", "index": 0 } ]] },
-    "④ Enrich (deep intel)": { "main": [[ { "node": "⑤ Score & tag", "type": "main", "index": 0 } ]] },
-    "⑤ Score & tag": { "main": [[ { "node": "⑥ Route by signal", "type": "main", "index": 0 }, { "node": "📊 Build digest", "type": "main", "index": 0 } ]] },
-    "⑥ Route by signal": { "main": [
-      [ { "node": "🎯 Top pick", "type": "main", "index": 0 } ],
-      [ { "node": "👀 Watchlist", "type": "main", "index": 0 } ],
-      [ { "node": "🚩 Risky client alert", "type": "main", "index": 0 } ],
-      []
-    ] },
-    "🎯 Top pick": { "main": [[ { "node": "⚡ Analyze (LLM)", "type": "main", "index": 0 } ]] },
-    "⚡ Analyze (LLM)": { "main": [[ { "node": "✍ Draft proposal (LLM)", "type": "main", "index": 0 } ]] },
-    "✍ Draft proposal (LLM)": { "main": [[ { "node": "📋 Assemble intel + proposal", "type": "main", "index": 0 } ]] },
-    "📊 Build digest": { "main": [[ { "node": "📤 Digest ready", "type": "main", "index": 0 } ]] },
-    "📈 My dashboard": { "main": [[ { "node": "💠 Connects snapshot", "type": "main", "index": 0 } ]] }
+  "settings": {
+    "executionOrder": "v1"
   },
-  "settings": { "executionOrder": "v1" }
+  "connections": {
+    "▶ Run now": {
+      "main": [
+        [
+          {
+            "node": "① Keywords",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📈 My dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "① Keywords": {
+      "main": [
+        [
+          {
+            "node": "② Search (per keyword)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🎯 Top pick": {
+      "main": [
+        [
+          {
+            "node": "⚡ Analyze (LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⑤ Score & tag": {
+      "main": [
+        [
+          {
+            "node": "⑥ Route by signal",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📊 Build digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🕒 Every hour": {
+      "main": [
+        [
+          {
+            "node": "① Keywords",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Analyze (LLM)": {
+      "main": [
+        [
+          {
+            "node": "✍ Draft proposal (LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📈 My dashboard": {
+      "main": [
+        [
+          {
+            "node": "💠 Connects snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Build digest": {
+      "main": [
+        [
+          {
+            "node": "📤 Digest ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⑥ Route by signal": {
+      "main": [
+        [
+          {
+            "node": "🎯 Top pick",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "👀 Watchlist",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🚩 Risky client alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "③ Flatten + dedupe": {
+      "main": [
+        [
+          {
+            "node": "④ Enrich (deep intel)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "④ Enrich (deep intel)": {
+      "main": [
+        [
+          {
+            "node": "⑤ Score & tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "② Search (per keyword)": {
+      "main": [
+        [
+          {
+            "node": "③ Flatten + dedupe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✍ Draft proposal (LLM)": {
+      "main": [
+        [
+          {
+            "node": "📋 Assemble intel + proposal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
 }
