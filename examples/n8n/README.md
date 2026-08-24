@@ -71,6 +71,18 @@ That's it — the workflow's HTTP nodes already point at `http://localhost:4178`
 | **`upwork-triage-starter.json`** | Search → split → enrich → score → "worth opening" filter | Understanding the pattern; a fast daily shortlist |
 | **`upwork-MCP-automation.json`** | 4-keyword search → flatten + dedupe → enrich → score & tag → **Switch route** (HOT / WATCH / trust-risk) → **LLM analyze** the top pick → **LLM draft** a proposal → assemble digest + dashboard | Running your real pre-bid routine end to end |
 
+### More ready-to-import workflows
+
+Same bridge, more of your Upwork routine on autopilot:
+
+| File | What it does | Trigger |
+|------|--------------|---------|
+| **`upwork-inbox-watcher.json`** | 💬 Pulls **unread** client chats and drafts a suggested reply for each (you approve before sending) | every 15 min |
+| **`upwork-best-time-radar.json`** | ⏰ Samples the market on a schedule and builds a **heatmap of when HOT gigs drop** (hour-of-day / weekday) so you know when to be online | hourly |
+| **`upwork-proposal-followup.json`** | 📨 Finds proposals gone cold — drafts a **polite follow-up** for aging ones and flags stale ones to **withdraw and reclaim connects** | daily |
+
+Each follows the same clean, non-overlapping layout and points at `http://localhost:4178`. Import them the same way (Import from File) and start the bridge first.
+
 ### PRO workflow, node by node
 
 1. **▶ Run now / 🕒 Hourly** — manual + schedule triggers.
@@ -97,6 +109,9 @@ The two LLM nodes use `onError: continueRegularOutput`, so a slow or missing mod
 | `GET` | `/api/dashboard` | `{ connects, matchingJobs, activeContracts, … }` |
 | `POST` | `/api/analyze` `{id}` | `{ analysis }` — fit / win-odds / suggested bid / red flags |
 | `POST` | `/api/draft` `{id}` | `{ draft }` — a ready-to-send proposal cover letter |
+| `GET` | `/api/messages?unread=1` | `{ rooms }` — message rooms (unread client chats) |
+| `GET` | `/api/proposals` | `{ proposals }` — your proposals with `age_days` |
+| `POST` | `/api/reply` `{room_id}` | `{ reply }` — an LLM-drafted chat reply (never sends) |
 
 ---
 

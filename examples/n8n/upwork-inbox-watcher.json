@@ -1,0 +1,242 @@
+{
+  "name": "Upwork Inbox Watcher · AI replies",
+  "nodes": [
+    {
+      "id": "bb000000-0000-4000-8000-000000000001",
+      "name": "▶ Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "position": [
+        -360,
+        540
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000002",
+      "name": "🕒 Every 15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        -360,
+        760
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "typeVersion": 1.2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000003",
+      "name": "① Fetch unread chats",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        40,
+        620
+      ],
+      "parameters": {
+        "url": "http://localhost:4178/api/messages",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "unread",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000004",
+      "name": "② Split + skip mine",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        420,
+        620
+      ],
+      "parameters": {
+        "jsCode": "// one item per unread room where the CLIENT (not you) sent last\nconst rooms = ($input.first().json.rooms) || [];\nreturn rooms.filter(r => r && !r.from_me).map(r => ({ json: r }));"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000005",
+      "name": "③ Draft reply (LLM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "onError": "continueRegularOutput",
+      "position": [
+        800,
+        620
+      ],
+      "parameters": {
+        "url": "http://localhost:4178/api/reply",
+        "method": "POST",
+        "options": {
+          "timeout": 240000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "room_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000006",
+      "name": "④ Assemble alerts",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1180,
+        620
+      ],
+      "parameters": {
+        "jsCode": "// pair each room with its drafted reply\nconst rooms = $('② Split + skip mine').all().map(i=>i.json);\nconst replies = $input.all().map(i=>i.json);\nreturn rooms.map((r,idx)=>({ json: { room: r.name, unread: r.unread, client_message: r.last_message, suggested_reply: (replies[idx]||{}).reply || '(draft pending)', room_id: r.id } }));"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000007",
+      "name": "📤 Notify (Slack/email)",
+      "type": "n8n-nodes-base.noOp",
+      "position": [
+        1560,
+        620
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000008",
+      "name": "note-in",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        20,
+        420
+      ],
+      "parameters": {
+        "color": 4,
+        "width": 720,
+        "height": 140,
+        "content": "## ① WATCH INBOX\nEvery 15 min, pull **unread** rooms and keep only chats where the client messaged last."
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000009",
+      "name": "note-llm",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        780,
+        420
+      ],
+      "parameters": {
+        "color": 2,
+        "width": 340,
+        "height": 140,
+        "content": "## ② AI REPLY (Codex, free)\nDraft a suggested reply per chat. Nothing is sent — you approve first."
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000010",
+      "name": "note-out",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1160,
+        420
+      ],
+      "parameters": {
+        "color": 6,
+        "width": 760,
+        "height": 140,
+        "content": "## ③ ALERT\nBundle chat + suggested reply. Swap the last node for Slack / email / Telegram."
+      },
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "▶ Run now": {
+      "main": [
+        [
+          {
+            "node": "① Fetch unread chats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🕒 Every 15 min": {
+      "main": [
+        [
+          {
+            "node": "① Fetch unread chats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "① Fetch unread chats": {
+      "main": [
+        [
+          {
+            "node": "② Split + skip mine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "② Split + skip mine": {
+      "main": [
+        [
+          {
+            "node": "③ Draft reply (LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "③ Draft reply (LLM)": {
+      "main": [
+        [
+          {
+            "node": "④ Assemble alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "④ Assemble alerts": {
+      "main": [
+        [
+          {
+            "node": "📤 Notify (Slack/email)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

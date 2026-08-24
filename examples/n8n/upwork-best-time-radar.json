@@ -1,0 +1,232 @@
+{
+  "name": "Upwork Best-Time-to-Bid Radar",
+  "nodes": [
+    {
+      "id": "bb000000-0000-4000-8000-000000000001",
+      "name": "▶ Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "position": [
+        -360,
+        540
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000002",
+      "name": "🕒 Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        -360,
+        760
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "typeVersion": 1.2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000003",
+      "name": "① Keywords",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        40,
+        620
+      ],
+      "parameters": {
+        "jsCode": "return ['AI automation','GoHighLevel','n8n','make.com automation'].map(q=>({json:{q}}));"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000004",
+      "name": "② Search market",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        420,
+        620
+      ],
+      "parameters": {
+        "url": "http://localhost:4178/api/search",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.q }}"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000005",
+      "name": "③ Bucket by hour/day",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        800,
+        620
+      ],
+      "parameters": {
+        "jsCode": "// tally job post times into persistent buckets (UTC)\nconst s = $getWorkflowStaticData('global');\ns.hours = s.hours || Array(24).fill(0);\ns.days = s.days || Array(7).fill(0);\ns.samples = s.samples || 0;\nlet counted = 0;\nfor (const it of $input.all()) {\n  for (const j of (it.json.jobs || [])) {\n    const d = j.published_date ? new Date(j.published_date) : null;\n    if (!d || isNaN(d)) continue;\n    s.hours[d.getUTCHours()]++; s.days[d.getUTCDay()]++; counted++;\n  }\n}\ns.samples++;\nreturn [{ json: { counted_this_run: counted, total_samples: s.samples } }];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000006",
+      "name": "④ Build heatmap",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1180,
+        620
+      ],
+      "parameters": {
+        "jsCode": "// render an ASCII heatmap + peak windows from the tally\nconst s = $getWorkflowStaticData('global');\nconst hours = s.hours || Array(24).fill(0);\nconst days = s.days || Array(7).fill(0);\nconst dn = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];\nconst max = Math.max(1, ...hours);\nconst bar = v => '#'.repeat(Math.round(v/max*12)).padEnd(12,'.');\nconst L = ['# Best time to bid (UTC)','',`Samples: ${s.samples||0}  ·  jobs seen: ${hours.reduce((a,b)=>a+b,0)}`,'','## By hour'];\nhours.forEach((v,h)=>L.push(`${String(h).padStart(2,'0')}:00 ${bar(v)} ${v}`));\nconst topH = hours.map((v,h)=>({h,v})).sort((a,b)=>b.v-a.v).slice(0,3).map(x=>x.h+':00').join(', ');\nconst topD = days.map((v,i)=>({d:dn[i],v})).sort((a,b)=>b.v-a.v).slice(0,3).map(x=>x.d).join(', ');\nL.push('', 'Peak hours: '+topH, 'Peak days: '+topD);\nreturn [{ json: { report: L.join('\\n'), peak_hours: topH, peak_days: topD } }];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000007",
+      "name": "📊 Timing report",
+      "type": "n8n-nodes-base.noOp",
+      "position": [
+        1560,
+        620
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000008",
+      "name": "note-in",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        20,
+        420
+      ],
+      "parameters": {
+        "color": 4,
+        "width": 720,
+        "height": 140,
+        "content": "## ① SAMPLE THE MARKET\nHourly, search your keywords and collect fresh postings + their publish times."
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000009",
+      "name": "note-bucket",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        780,
+        420
+      ],
+      "parameters": {
+        "color": 5,
+        "width": 340,
+        "height": 140,
+        "content": "## ② BUCKET BY TIME\nTally post times into persistent hour/weekday buckets (survives runs)."
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000010",
+      "name": "note-out",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1160,
+        420
+      ],
+      "parameters": {
+        "color": 3,
+        "width": 760,
+        "height": 140,
+        "content": "## ③ HEATMAP + PEAK WINDOWS\nRender when HOT gigs actually drop, so you know when to be online."
+      },
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "▶ Run now": {
+      "main": [
+        [
+          {
+            "node": "① Keywords",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🕒 Every hour": {
+      "main": [
+        [
+          {
+            "node": "① Keywords",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "① Keywords": {
+      "main": [
+        [
+          {
+            "node": "② Search market",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "② Search market": {
+      "main": [
+        [
+          {
+            "node": "③ Bucket by hour/day",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "③ Bucket by hour/day": {
+      "main": [
+        [
+          {
+            "node": "④ Build heatmap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "④ Build heatmap": {
+      "main": [
+        [
+          {
+            "node": "📊 Timing report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

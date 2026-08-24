@@ -15,6 +15,9 @@
  *   GET  /api/dashboard              → { connects, matchingJobs, activeContracts, … }
  *   POST /api/analyze  {id}          → { analysis }  LLM triage (fit / win-odds / suggested bid)
  *   POST /api/draft    {id}          → { draft }     LLM proposal cover letter
+ *   GET  /api/messages?unread=1      → { rooms:[…] } message rooms (unread client chats)
+ *   GET  /api/proposals              → { proposals:[…] } your proposals + age_days
+ *   POST /api/reply    {room_id}     → { reply }     LLM-drafted reply to a chat (never sends)
  *
  * Run:   node examples/n8n/bridge.mjs        (defaults to http://localhost:4178)
  * Login first:  node bin/upwork.js login
@@ -141,6 +144,47 @@ const server = createServer(async (req, res) => {
         : `You are an expert Upwork freelancer. Write a concise, specific, winning proposal cover letter (max 160 words) for the job below. Reference the client's real spend/history, address any screening, propose a clear first step, sound human. Output ONLY the cover letter.\n\n${ctx}`;
       try { const text = await llmText(prompt); return send(res, 200, analyze ? { analysis: text } : { draft: text }); }
       catch { const j = await deepJob(id).catch(() => ({})); const text = heuristic(analyze ? 'analyze' : 'draft', j); return send(res, 200, analyze ? { analysis: text, llm: 'heuristic' } : { draft: text, llm: 'heuristic' }); }
+    }
+    if (url.pathname === '/api/messages') {
+      // list message rooms; ?unread=1 keeps only rooms with unread client messages
+      const r = await cli(['get_messages', 'list_rooms', '--org', 'talent']);
+      const rooms = (r?.data?.rooms || r?.data || []).map((rm) => {
+        const last = clean(rm.latestStory?.message) || '';
+        const fromMe = /^You:/i.test(last);
+        return { id: rm.id, name: clean(rm.roomName), unread: num(rm.numUnread) || 0,
+          from_me: fromMe, last_message: last.replace(/^You:\s*/i, ''),
+          last_activity: num(rm.lastActivity), room_type: rm.roomType, contract_status: rm.contractStatus };
+      });
+      return send(res, 200, { rooms: q.get('unread') === '1' ? rooms.filter((x) => x.unread > 0) : rooms });
+    }
+    if (url.pathname === '/api/proposals') {
+      // your submitted proposals with an age_days field (for stale/follow-up automations)
+      const r = await cli(['list_freelancer_proposals', 'list', '--org', 'talent']);
+      const edges = r?.data?.vendorProposals?.edges || [];
+      const now = Date.now();
+      const proposals = edges.map((e) => {
+        const n = e.node || {}; const created = num(n.auditDetails?.createdDateTime?.rawValue);
+        return { id: n.id, job_id: n.marketplaceJobPosting?.id, title: clean(n.marketplaceJobPosting?.content?.title),
+          status: n.status?.status, status_label: n.status?.status_label,
+          bid: num(n.terms?.chargeRate?.rawValue), currency: n.terms?.chargeRate?.currency,
+          created: n.auditDetails?.createdDateTime?.displayValue, created_ms: created,
+          age_days: created ? Math.floor((now - created) / 86400000) : null };
+      });
+      return send(res, 200, { proposals });
+    }
+    if (url.pathname === '/api/reply' && req.method === 'POST') {
+      // draft an AI reply to a room's latest client messages (never sends — you approve)
+      const body = await readBody(req); const room = q.get('room_id') || body.room_id || body.id;
+      if (!room) return send(res, 400, { error: 'room_id required' });
+      let ctx = '';
+      try {
+        const m = await cli(['get_messages', 'list_messages', '-p', `room_id=${room}`, '--org', 'talent']);
+        ctx = (m?.data?.roomStories?.edges || []).slice(0, 6).reverse().map((e) => clean(e.node?.message)).filter(Boolean).join('\n');
+      } catch {}
+      const who = body.name ? ` from ${body.name}` : '';
+      const prompt = `You are an Upwork freelancer replying to a client message${who}. Write a short, warm, professional reply (max 90 words). Be specific, propose a concrete next step, no fluff, no "I am excited". Output ONLY the reply text.\n\nCONVERSATION (oldest first):\n${ctx || '(the client just reached out)'}\n`;
+      try { const reply = await llmText(prompt); return send(res, 200, { reply }); }
+      catch { return send(res, 200, { reply: 'Thanks for reaching out! Happy to help — could you share a bit more detail so I can suggest the best next step?', llm: 'heuristic' }); }
     }
     return send(res, 404, { error: 'unknown endpoint' });
   } catch (e) { return send(res, 500, { error: String(e.message || e).split('\n')[0] }); }

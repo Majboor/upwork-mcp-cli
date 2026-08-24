@@ -1,0 +1,355 @@
+{
+  "name": "Upwork Proposal Follow-up · Connects Reclaim",
+  "nodes": [
+    {
+      "id": "bb000000-0000-4000-8000-000000000001",
+      "name": "▶ Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "position": [
+        -360,
+        540
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000002",
+      "name": "🕒 Daily",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        -360,
+        760
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1
+            }
+          ]
+        }
+      },
+      "typeVersion": 1.2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000003",
+      "name": "① Fetch proposals",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        40,
+        620
+      ],
+      "parameters": {
+        "url": "http://localhost:4178/api/proposals",
+        "options": {}
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000004",
+      "name": "② Filter active + age",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        420,
+        620
+      ],
+      "parameters": {
+        "jsCode": "// keep submitted/pending proposals, bucket by age\nconst props = ($input.first().json.proposals) || [];\nconst active = props.filter(p => /submitted|accepted|pending|viewed/i.test((p.status_label||p.status||'')));\nreturn active.map(p => ({ json: { ...p, bucket: p.age_days>=14 ? 'withdraw' : p.age_days>=5 ? 'followup' : 'fresh' } }));"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000005",
+      "name": "③ Route by age",
+      "type": "n8n-nodes-base.switch",
+      "position": [
+        800,
+        620
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "🔔 Follow up (5-13d)",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.bucket }}",
+                    "rightValue": "followup"
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "🗑 Stale (14d+)",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.bucket }}",
+                    "rightValue": "withdraw"
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "👀 Fresh (<5d)",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.bucket }}",
+                    "rightValue": "fresh"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "typeVersion": 3
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000006",
+      "name": "✍ Compose nudge",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1180,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// a polite, ready-to-send follow-up (edit tone as you like)\nconst p = $json;\nconst msg = `Hi — just following up on my proposal for \"${p.title}\". I'm still very interested and have availability to start this week. Happy to hop on a quick call or answer any questions. Thanks!`;\nreturn [{ json: { id: p.id, title: p.title, age_days: p.age_days, followup_message: msg } }];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000007",
+      "name": "🗑 Withdraw candidate",
+      "type": "n8n-nodes-base.noOp",
+      "position": [
+        1180,
+        620
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000008",
+      "name": "👀 Fresh (hold)",
+      "type": "n8n-nodes-base.noOp",
+      "position": [
+        1180,
+        840
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000009",
+      "name": "📊 Build digest",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        420,
+        1040
+      ],
+      "parameters": {
+        "jsCode": "// summary across all active proposals\nconst all = $('② Filter active + age').all().map(i=>i.json);\nconst f = all.filter(p=>p.bucket==='followup'), w = all.filter(p=>p.bucket==='withdraw');\nconst L = ['# Proposal follow-up','',`Active: ${all.length}  ·  ${f.length} due a nudge  ·  ${w.length} stale (reclaim connects)`];\nif (f.length){ L.push('','## Nudge these'); f.forEach(p=>L.push(`- ${p.title} — ${p.age_days}d old`)); }\nif (w.length){ L.push('','## Consider withdrawing (free up connects)'); w.forEach(p=>L.push(`- ${p.title} — ${p.age_days}d, no reply`)); }\nreturn [{ json: { digest: L.join('\\n'), active: all.length, followup: f.length, stale: w.length } }];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000010",
+      "name": "📤 Report",
+      "type": "n8n-nodes-base.noOp",
+      "position": [
+        780,
+        1040
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000011",
+      "name": "note-in",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        20,
+        420
+      ],
+      "parameters": {
+        "color": 4,
+        "width": 720,
+        "height": 140,
+        "content": "## ① YOUR PROPOSALS\nDaily, pull your submitted proposals with an age (days since sent)."
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000012",
+      "name": "note-route",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        780,
+        420
+      ],
+      "parameters": {
+        "color": 5,
+        "width": 340,
+        "height": 140,
+        "content": "## ② AGE & ROUTE\nBucket each: fresh (<5d) · nudge (5–13d) · stale (14d+)."
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000013",
+      "name": "note-act",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1160,
+        200
+      ],
+      "parameters": {
+        "color": 2,
+        "width": 760,
+        "height": 140,
+        "content": "## ③ ACT\nDraft a follow-up for aging proposals; flag stale ones to withdraw and reclaim connects."
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "bb000000-0000-4000-8000-000000000014",
+      "name": "note-digest",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        400,
+        840
+      ],
+      "parameters": {
+        "color": 6,
+        "width": 700,
+        "height": 140,
+        "content": "## ④ DIGEST\nOne summary of what to nudge vs withdraw. Add Slack / email here."
+      },
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "▶ Run now": {
+      "main": [
+        [
+          {
+            "node": "① Fetch proposals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🕒 Daily": {
+      "main": [
+        [
+          {
+            "node": "① Fetch proposals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "① Fetch proposals": {
+      "main": [
+        [
+          {
+            "node": "② Filter active + age",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "② Filter active + age": {
+      "main": [
+        [
+          {
+            "node": "③ Route by age",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📊 Build digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "③ Route by age": {
+      "main": [
+        [
+          {
+            "node": "✍ Compose nudge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🗑 Withdraw candidate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "👀 Fresh (hold)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Build digest": {
+      "main": [
+        [
+          {
+            "node": "📤 Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
