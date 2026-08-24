@@ -15,6 +15,8 @@ upwork find_jobs search -p query="n8n automation" -p limit=5 --org talent --tabl
 
 **Topics:** upwork mcp · upwork mcp server · automate upwork · upwork automation · official upwork mcp · upwork api · upwork cli · upwork n8n · upwork ai agent · model context protocol · find upwork jobs · upwork proposal automation · upwork bid analysis.
 
+> 🧭 See also: **[Awesome Upwork MCP](https://github.com/Majboor/awesome-upwork-mcp)** — a curated list of Upwork automations, strictly built on the official MCP.
+
 ---
 
 ## Table of contents

@@ -21,6 +21,15 @@
   "author": "",
   "license": "ISC",
   "type": "module",
+  "files": [
+    "bin",
+    "src",
+    "manifest.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "homepage": "https://github.com/Majboor/upwork-mcp-cli#readme",
   "repository": {
     "type": "git",
